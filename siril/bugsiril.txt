@@ -1,0 +1,4 @@
+Replace preprocess with convert dans wrapper.py :
+    def preprocess(self,sequencename, bias=None, dark=None,flat=None,
+                return (self.Execute("preprocss"),) ->         return (self.Execute("calibrate"),)
+

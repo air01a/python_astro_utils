@@ -11,6 +11,7 @@ dir_path = dirname(realpath(__file__))
 # Define directories
 workdir = join(dir_path, "lights")
 process_dir = join(dir_path,'process')
+dark_file = join(dir_path,'calibration','dark.fit')
 # Set up Siril
 app.Execute("set16bits")
 app.Execute("setext fit")
@@ -19,7 +20,7 @@ def light(light_dir, process_dir):
     fits_file = [f for f in os.listdir(light_dir) if f.lower().endswith(('.fits', '.fit'))]
     cmd.cd(light_dir)
     #cmd.Execute("start_ls '-rotate'", False)
-    cmd.start_ls(rotate=True)
+    cmd.start_ls(rotate=True, dark=dark_file)
     #cmd.Execute("livestack 'm27.8.00.LIGHT.329.2023-10-01_21-39-23_1.fits'")
     for file in fits_file:
         print(f"livestack {file}")
