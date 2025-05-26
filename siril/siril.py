@@ -1,13 +1,15 @@
 from pysiril.siril import Siril
 from pysiril.wrapper import Wrapper
-
+from os.path import dirname, realpath, join
 app = Siril()
 cmd = Wrapper(app)
 app.Open()  
 
+
+dir_path = dirname(realpath(__file__))
 # Define directories
-workdir = ".\\lights"
-process_dir = '.\\siril\\process'
+workdir = join(dir_path, "lights")
+process_dir = join(dir_path,'process')
 
 # Set up Siril
 app.Execute("set16bits")
@@ -15,7 +17,7 @@ app.Execute("setext fit")
 
 def light(light_dir, process_dir):
     cmd.cd(light_dir)
-    cmd.convert( 'light', out="..\\process", debayer=True)
+    cmd.convert( 'light', out=process_dir, debayer=True)
     cmd.cd( process_dir )
     #cmd.preprocess('light', dark='dark_stacked', flat='pp_flat_stacked', cfa=True, equalize_cfa=True, debayer=True )
     cmd.register('light')

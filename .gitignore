@@ -172,3 +172,11 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+
+*.fit
+*.fits
+siril/Scripts/
+*.whl
+siril/lights/*
+siril/pyvenv.cfg
