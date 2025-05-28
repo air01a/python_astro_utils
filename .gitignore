@@ -180,3 +180,6 @@ siril/Scripts/
 *.whl
 siril/lights/*
 siril/pyvenv.cfg
+Scripts/
+pyvenv.cfg
+share/

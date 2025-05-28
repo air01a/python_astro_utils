@@ -1,0 +1,7 @@
+numpy 
+requests
+opencv-python
+photutils
+astropy
+matplotlib
+scipy
