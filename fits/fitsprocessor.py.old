@@ -1,0 +1,132 @@
+import numpy as np
+from astropy.io import fits
+import cv2
+from pathlib import Path
+
+class FITSProcessor:
+    def __init__(self, filepath):
+        self.filepath = Path(filepath)
+        self.header = None
+        self.image = None
+        self.debayered = False
+        self.load_fits()
+
+    def load_fits(self):
+        with fits.open(self.filepath) as hdul:
+            self.header = hdul[0].header
+            self.image = hdul[0].data
+
+        if self.image.ndim == 3:
+            raise ValueError("Image FITS en 3D (déjà RGB ?), non prise en charge.")
+
+        if self._is_bayered():
+            self.image = self._debayer_image(self.image)
+            self.debayered = True
+
+    def _is_bayered(self):
+        return 'BAYERPAT' in self.header or self.header.get('COLORTYP', '').lower() == 'bayer'
+    
+
+    def _rebayerize(self, pattern="RGGB"):
+        """
+        Convertit une image RGB (H, W, 3) en image 2D monochrome avec motif Bayer.
+        """
+        if self.image.ndim != 3 or self.image.shape[2] != 3:
+            raise ValueError("Image non RGB")
+
+        H, W, _ = self.image.shape
+        rebayered = np.zeros((H, W), dtype=self.image.dtype)
+
+        pattern = pattern.upper()
+        if pattern not in {"RGGB", "BGGR", "GRBG", "GBRG"}:
+            raise ValueError(f"Motif Bayer non supporté : {pattern}")
+
+        r = self.image[:, :, 2]
+        g = self.image[:, :, 1]
+        b = self.image[:, :, 0]
+
+        if pattern == "RGGB":
+            rebayered[0::2, 0::2] = r[0::2, 0::2]  # R
+            rebayered[0::2, 1::2] = g[0::2, 1::2]  # G1
+            rebayered[1::2, 0::2] = g[1::2, 0::2]  # G2
+            rebayered[1::2, 1::2] = b[1::2, 1::2]  # B
+        elif pattern == "BGGR":
+            rebayered[0::2, 0::2] = b[0::2, 0::2]
+            rebayered[0::2, 1::2] = g[0::2, 1::2]
+            rebayered[1::2, 0::2] = g[1::2, 0::2]
+            rebayered[1::2, 1::2] = r[1::2, 1::2]
+        elif pattern == "GRBG":
+            rebayered[0::2, 0::2] = g[0::2, 0::2]
+            rebayered[0::2, 1::2] = r[0::2, 1::2]
+            rebayered[1::2, 0::2] = b[1::2, 0::2]
+            rebayered[1::2, 1::2] = g[1::2, 1::2]
+        elif pattern == "GBRG":
+            rebayered[0::2, 0::2] = g[0::2, 0::2]
+            rebayered[0::2, 1::2] = b[0::2, 1::2]
+            rebayered[1::2, 0::2] = r[1::2, 0::2]
+            rebayered[1::2, 1::2] = g[1::2, 1::2]
+
+        return rebayered
+
+    def _debayer_image(self, raw_image):
+        # On convertit à uint16 si nécessaire, en respectant la dynamique
+        if raw_image.dtype != np.uint16:
+            max_val = raw_image.max()
+            if max_val > 65535:
+                raise ValueError("Image dépasse la dynamique 16 bits. Normalisation nécessaire.")
+            raw_image = raw_image.astype(np.uint16)
+
+        bayer_pattern = self.header.get('BAYERPAT', 'RGGB').upper()
+        pattern_map = {
+            'RGGB': cv2.COLOR_BAYER_RG2BGR,
+            'BGGR': cv2.COLOR_BAYER_BG2BGR,
+            'GRBG': cv2.COLOR_BAYER_GR2BGR,
+            'GBRG': cv2.COLOR_BAYER_GB2BGR
+        }
+
+        if bayer_pattern not in pattern_map:
+            raise ValueError(f"Motif Bayer non supporté : {bayer_pattern}")
+
+        color_image = cv2.cvtColor(raw_image, pattern_map[bayer_pattern])
+        return color_image
+
+    def save_fits(self, output_path):
+
+        hdu = fits.PrimaryHDU(data=self._rebayerize(), header=self.header)
+        hdu.writeto(output_path, overwrite=True)
+        print(f"Image enregistrée dans {output_path}")
+
+
+    def save_rgb_fits_16bit(self, output_path):
+        """
+        Sauvegarde l'image RGB en FITS avec conservation de dynamique.
+        Remet l'image dans la plage [0 – 65535] si elle est en float.
+        """
+        if self.image.ndim != 3 or self.image.shape[2] != 3:
+            raise ValueError("L'image n'est pas RGB")
+
+        image = self.image
+
+        # Convertir BGR → RGB si OpenCV a été utilisé
+        if isinstance(image, np.ndarray):
+            # OpenCV donne BGR par défaut, on inverse :
+            image = image[:, :, ::-1]  # BGR → RGB
+
+        if image.dtype == np.float32 or image.dtype == np.float64:
+            max_val = image.max()
+            if max_val <= 1.0:
+                # image probablement dans [0.0 – 1.0] → étirer vers 65535
+                image = (image * 65535).astype(np.uint16)
+            elif max_val <= 65535:
+                image = image.astype(np.uint16)
+            else:
+                image = (image / max_val * 65535).astype(np.uint16)
+        elif image.dtype != np.uint16:
+            image = image.astype(np.uint16)
+
+        # FITS attend l’ordre (3, H, W)
+        image_to_save = np.moveaxis(image, -1, 0)
+
+        hdu = fits.PrimaryHDU(data=image_to_save, header=self.header)
+        hdu.writeto(output_path, overwrite=True)
+        print(f"Image RGB enregistrée dans {output_path}")
